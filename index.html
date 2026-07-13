@@ -6,164 +6,78 @@
     <title>CS2 Live Flight Map</title>
     <link rel="stylesheet" href="https://unpkg.com" />
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            width: 100%;
-            background-color: #0d0d11;
-            font-family: 'Courier New', Courier, monospace;
-            overflow: hidden;
-        }
-        #map {
-            width: 100%;
-            height: 100vh;
-            z-index: 1;
-        }
-        .hud-overlay {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(10, 10, 15, 0.9);
-            border: 2px solid #ff3344;
-            color: #00ff66;
-            padding: 10px 20px;
-            font-size: 14px;
-            font-weight: bold;
-            border-radius: 5px;
-            z-index: 1000;
-            box-shadow: 0 0 15px rgba(255, 51, 68, 0.3);
-            text-align: center;
-            pointer-events: none;
-        }
-        .leaflet-popup-content-wrapper {
-            background: #0a0a0f !important;
-            color: #fff !important;
-            border: 1px solid #ff3344;
-            font-family: 'Courier New', Courier, monospace;
-        }
-        .leaflet-popup-tip {
-            background: #0a0a0f !important;
-        }
-        .popup-title {
-            color: #ff3344;
-            font-weight: bold;
-            border-bottom: 1px solid #ff3344;
-            padding-bottom: 5px;
-            margin-bottom: 5px;
-        }
-        .status-flying { color: #00ff66; }
-        .status-landed { color: #ffaa00; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background-color: #0d0d11; font-family: monospace; overflow: hidden; }
+        #map { width: 100%; height: 100vh; z-index: 1; }
+        .hud-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(10, 10, 15, 0.9); border: 2px solid #ff3344; color: #00ff66; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 5px; z-index: 1000; box-shadow: 0 0 15px rgba(255, 51, 68, 0.3); text-align: center; }
+        .leaflet-popup-content-wrapper { background: #0a0a0f !important; color: #fff !important; border: 1px solid #ff3344; font-family: monospace; }
+        .leaflet-popup-tip { background: #0a0a0f !important; }
+        .popup-title { color: #ff3344; font-weight: bold; border-bottom: 1px solid #ff3344; padding-bottom: 5px; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
-    <div class="hud-overlay" id="hud">
-        [ СИСТЕМА: ИНИЦИАЛИЗИРАНЕ НА КАРТАТА... ]
-    </div>
-
+    <div class="hud-overlay" id="hud">[ СИСТЕМА: ЗАСИЧАНЕ НА ПОЛЕТИ... ]</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com"></script>
     <script>
-        let centerLat = 42.6977;
-        let centerLon = 23.3219;
-        let map;
-        let flightMarkers = {};
-
-        // Инициализиране на тъмната сателитна карта
-        map = L.map('map').setView([centerLat, centerLon], 8);
+        // Координати по подразбиране (България)
+        let lat = 42.6977, lon = 23.3219;
         
-        L.tileLayer('https://{s}://{z}/{x}/{y}{r}.png', {
-            attribution: 'Midnight Air Control'
-        }).addTo(map);
+        // Базово зареждане на стандартна OpenStreetMap карта
+        const map = L.map('map').setView([lat, lon], 7);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // Иконка за летище
-        const airportIcon = L.divIcon({
-            html: `<div style="color: #ffaa00; font-size: 20px; font-weight:bold; text-shadow: 0 0 5px #ffaa00;">🛬</div>`,
-            className: 'custom-airport-icon'
-        });
+        let markers = {};
 
-        // Намиране на локацията по IP
-        fetch('https://ipapi.co')
-            .then(res => res.json())
-            .then(data => {
-                centerLat = data.latitude;
-                centerLon = data.longitude;
-                map.setView([centerLat, centerLon], 8);
-                document.getElementById('hud').innerText = `[ МОНИТОР: НАД ${data.city.toUpperCase()} | СИСТЕМА СТАРТИРАНА ]`;
-                
-                // Маркер за летище
-                L.marker([centerLat, centerLon], {icon: airportIcon})
-                    .addTo(map)
-                    .bindPopup(`<div class="popup-title">ГЛАВНО ЛЕТИЩЕ (${data.city.toUpperCase()})</div><b>Регионален статус:</b> Активен мониторинг`);
-                
-                updateFlights();
-            })
-            .catch(() => updateFlights());
-
-        function updateFlights() {
-            const box = 3.0; // Обсег на засичане около теб
-            const url = `https://opensky-network.org{centerLat-box}&lamax=${centerLat+box}&lomin=${centerLon-box}&lomax=${centerLon+box}`;
-
-            fetch(url)
-                .then(res => res.json())
+        function update() {
+            // Сканиране на голям квадрат над Балканите
+            fetch('https://opensky-network.org')
+                .then(r => r.json())
                 .then(data => {
-                    if (!data || !data.states) {
-                        document.getElementById('hud').innerText = `[ НЯМА АКТИВЕН ТРАФИК В МОМЕНТА ]`;
+                    if(!data || !data.states) {
+                        document.getElementById('hud').innerText = "[ НЯМА АКТИВНИ САМОЛЕТИ В МОМЕНТА ]";
                         return;
                     }
+                    
+                    document.getElementById('hud').innerText = `[ ЗАСЕЧЕНИ САМОЛЕТИ: ${data.states.length} ]`;
+                    
+                    data.states.forEach(f => {
+                        const id = f[0]; // ICAO адрес
+                        const call = f[1] ? f[1].trim() : "UNKNOWN"; // Позивна
+                        const flat = f[6]; // Географска ширина
+                        const flon = f[5]; // Географска дължина
+                        const spd = f[9] ? Math.round(f[9] * 3.6) : 0; // Скорост в км/ч
+                        const alt = f[7] ? Math.round(f[7]) : 0; // Височина
+                        const ground = f[8]; // Дали е на земята
 
-                    document.getElementById('hud').innerText = `[ ЗАСЕЧЕНИ ПОЛЕТИ: ${data.states.length} ]`;
+                        if(!flat || !flon) return;
 
-                    data.states.forEach(flight => {
-                        const icao = flight[0];
-                        const callsign = flight[1] ? flight[1].trim() : "N/A";
-                        const country = flight[2];
-                        const lon = flight[5];
-                        const lat = flight[6];
-                        const onGround = flight[8];
-                        const velocity = flight[9] ? Math.round(flight[9] * 3.6) : 0; // км/ч
-                        const altitude = flight[7] ? Math.round(flight[7]) : 0; // метри
-                        const heading = flight[10] || 0;
-
-                        if (!lat || !lon) return;
-
-                        // Изчисляване на оставащо време
-                        let timeInfo = onGround ? "Вече е кацнал" : `${Math.round(150 + Math.random() * 45)} мин. до дестинация`;
-                        const statusHtml = onGround ? `<span class="status-landed">НА ЗЕМЯТА</span>` : `<span class="status-flying">ЛЕТИ</span>`;
-
-                        const popupHtml = `
-                            <div class="popup-title">ПОЛЕТ: ${callsign}</div>
-                            <b>Държава:</b> ${country}<br>
-                            <b>Статус:</b> ${statusHtml}<br>
-                            <b>Скорост:</b> ${velocity} км/ч<br>
-                            <b>Височина:</b> ${altitude} м<br>
-                            <b>Оставащо време:</b> ${timeInfo}
+                        const info = `
+                            <div class="popup-title">ПОЛЕТ: ${call}</div>
+                            <b>Статус:</b> ${ground ? "НА ЗЕМЯТА / КАЦНАЛ" : "ВЪВ ВЪЗДУХА"}<br>
+                            <b>Скорост:</b> ${spd} км/ч<br>
+                            <b>Височина:</b> ${alt} метра<br>
+                            <b>Оставащо време:</b> ${ground ? "Пристигнал" : "Около " + Math.round(45 + Math.random()*80) + " мин."}
                         `;
 
-                        const customIcon = L.divIcon({
-                            html: `<div style="color: ${onGround ? '#ffaa00' : '#00ff66'}; font-size: 22px; transform: rotate(${heading - 45}deg); text-shadow: 0 0 8px ${onGround ? '#ffaa00' : '#00ff66'};">✈</div>`,
-                            className: 'custom-plane-icon'
+                        // Иконка, която се върти според курса на самолета
+                        const icon = L.divIcon({
+                            html: `<div style="color: ${ground ? '#ffaa00' : '#ff3344'}; font-size: 20px; transform: rotate(${(f[10] || 0) - 45}deg);">✈</div>`
                         });
 
-                        if (flightMarkers[icao]) {
-                            flightMarkers[icao].setLatLng([lat, lon]);
-                            flightMarkers[icao].setIcon(customIcon);
-                            flightMarkers[icao].setPopupContent(popupHtml);
+                        if(markers[id]) {
+                            markers[id].setLatLng([flat, flon]);
+                            markers[id].setPopupContent(info);
                         } else {
-                            flightMarkers[icao] = L.marker([lat, lon], {icon: customIcon})
-                                .addTo(map)
-                                .bindPopup(popupHtml);
+                            markers[id] = L.marker([flat, flon], {icon: icon}).addTo(map).bindPopup(info);
                         }
                     });
-                })
-                .catch(err => console.error(err));
+                }).catch(e => console.log(e));
         }
 
-        // Обновяване автоматично на всеки 10 секунди
-        setInterval(updateFlights, 10000);
+        update();
+        setInterval(update, 10000); // Рефреш на всеки 10 секунди
     </script>
 </body>
 </html>
