@@ -3,148 +3,185 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Midnight Flight Tracker Radar</title>
+    <title>CS2 Live Flight Map</title>
+    <!-- Зареждане на стилове за интерактивна карта -->
+    <link rel="stylesheet" href="https://unpkg.com" />
     <style>
-        body {
-            background-color: #0a0a0c;
-            color: #ff3344;
-            font-family: 'Courier New', Courier, monospace;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
+        body, html {
             margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            background-color: #0d0d11;
+            font-family: 'Courier New', Courier, monospace;
             overflow: hidden;
         }
-        h1 {
-            text-shadow: 0 0 10px #ff3344;
-            margin-bottom: 5px;
-        }
-        .status {
-            color: #00ff66;
-            text-shadow: 0 0 8px #00ff66;
-            margin-bottom: 20px;
-        }
-        .radar-container {
-            position: relative;
-            width: 400px;
-            height: 400px;
-            border: 2px solid #ff3344;
-            border-radius: 50%;
-            box-shadow: 0 0 20px rgba(255, 51, 68, 0.2);
-            background: radial-gradient(circle, rgba(255,51,68,0.05) 0%, rgba(10,10,12,1) 70%);
-        }
-        .radar-sweep {
-            position: absolute;
+        #map {
             width: 100%;
-            height: 100%;
-            background: conic-gradient(from 0deg, rgba(255, 51, 68, 0.4) 0deg, transparent 90deg);
-            border-radius: 50%;
-            animation: rotate 4s linear infinite;
+            height: 100vh;
             z-index: 1;
         }
-        .plane-dot {
+        .hud-overlay {
             position: absolute;
-            width: 10px;
-            height: 10px;
-            background-color: #00ff66;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 0 12px #00ff66;
-            z-index: 2;
-            cursor: pointer;
-        }
-        .plane-label {
-            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 10, 15, 0.9);
+            border: 2px solid #ff3344;
             color: #00ff66;
-            font-size: 10px;
-            white-space: nowrap;
-            margin-top: 12px;
-            margin-left: 5px;
-            background: rgba(0,0,0,0.7);
-            padding: 2px;
-            border-radius: 3px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 5px;
+            z-index: 1000;
+            box-shadow: 0 0 15px rgba(255, 51, 68, 0.3);
+            text-align: center;
+            pointer-events: none;
         }
-        @keyframes rotate {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+        /* Хакерски стил за прозорците на самолетите */
+        .leaflet-popup-content-wrapper {
+            background: #0a0a0f !important;
+            color: #fff !important;
+            border: 1px solid #ff3344;
+            font-family: 'Courier New', Courier, monospace;
         }
+        .leaflet-popup-tip {
+            background: #0a0a0f !important;
+        }
+        .popup-title {
+            color: #ff3344;
+            font-weight: bold;
+            border-bottom: 1px solid #ff3344;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+        }
+        .status-flying { color: #00ff66; }
+        .status-landed { color: #ffaa00; }
     </style>
 </head>
 <body>
-    <h1>AIRSPACE REAL-TIME RADAR</h1>
-    <div id="radar-status" class="status">[ ТЪРСЕНЕ НА САМОЛЕТИ В РЕГИОНА... ]</div>
-    
-    <div class="radar-container" id="radar">
-        <div class="radar-sweep"></div>
+
+    <div class="hud-overlay" id="hud">
+        [ СИСТЕМА: ЗАСИЧАНЕ НА ВЪЗДУШНОТО ПРОСТРАНСТВО... ]
     </div>
 
-    <script>
-        // Координати по подразбиране (България)
-        let userLat = 42.6977;
-        let userLon = 23.3219;
+    <div id="map"></div>
 
-        // Автоматично намиране на твоята локация през IP
+    <!-- Зареждане на скриптовете за Google/OSM Карти -->
+    <script src="https://unpkg.com"></script>
+    <script>
+        // Координати по подразбиране (София, България)
+        let centerLat = 42.6977;
+        let centerLon = 23.3219;
+        let map, flightMarkers = {};
+
+        // Инициализиране на картата (стил Тъмен Google/CartoDB за хакерски вид)
+        map = L.map('map').setView([centerLat, centerLon], 9);
+        
+        L.tileLayer('https://{s}://{z}/{x}/{y}{r}.png', {
+            attribution: 'Midnight Air Control'
+        }).addTo(map);
+
+        // Създаване на кастъм иконка за самолет
+        const planeIcon = L.divIcon({
+            html: `<div style="color: #00ff66; font-size: 20px; transform: rotate(0deg);">✈</div>`,
+            className: 'custom-plane-icon',
+            iconSize: [20, 20]
+        });
+
+        // Създаване на иконка за летище
+        const airportIcon = L.divIcon({
+            html: `<div style="color: #ffaa00; font-size: 18px; font-weight:bold;">🛬</div>`,
+            className: 'custom-airport-icon',
+            iconSize: [20, 20]
+        });
+
+        // Автоматично намиране на твоята позиция за центриране
         fetch('https://ipapi.co')
             .then(res => res.json())
             .then(data => {
-                userLat = data.latitude;
-                userLon = data.longitude;
-                document.getElementById('radar-status').innerText = `[ ЗАСИЧАНЕ НАД: ${data.city.toUpperCase()} ]`;
-                getPlanes();
+                centerLat = data.latitude;
+                centerLon = data.longitude;
+                map.setView([centerLat, centerLon], 9);
+                document.getElementById('hud').innerText = `[ МОНИТОР: НАД ${data.city.toUpperCase()} | КАРТА: АКТИВНА ]`;
+                
+                // Добавяне на маркер за местното летище наблизо
+                L.marker([centerLat + 0.02, centerLon + 0.08], {icon: airportIcon})
+                    .addTo(map)
+                    .bindPopup(`<div class="popup-title">ЛЕТИЩЕ (${data.city.toUpperCase()})</div><b>Статус:</b> Отворено<br><b>Кацащи полети:</b> Мониторинг...`);
+                
+                updateFlights();
             })
-            .catch(() => getPlanes());
+            .catch(() => updateFlights());
 
-        function getPlanes() {
-            // Сканира за самолети в радиус около теб през OpenSky API
-            const box = 1.5; // Радиус на обсега
-            const url = `https://opensky-network.org{userLat-box}&lamin=${userLat-box}&lamax=${userLat+box}&lomin=${userLon-box}&lomax=${userLon+box}`;
-            
+        function updateFlights() {
+            const box = 2.0; // Обсег на търсене около теб в градуси
+            const url = `https://opensky-network.org{centerLat-box}&lamin=${centerLat-box}&lamax=${centerLat+box}&lomin=${centerLon-box}&lomax=${centerLon+box}`;
+
             fetch(url)
                 .then(res => res.json())
                 .then(data => {
-                    // Премахване на старите самолети от екрана преди рефреш
-                    document.querySelectorAll('.plane-dot').forEach(el => el.remove());
-                    
-                    if(!data.states) {
-                        document.getElementById('radar-status').innerText = `[ НЯМА ОТКРИТИ САМОЛЕТИ В МОМЕНТА ]`;
+                    if (!data.states) {
+                        document.getElementById('hud').innerText = `[ ВЪЗДУШНОТО ПРОСТРАНСТВО Е ЧИСТО ]`;
                         return;
                     }
 
-                    document.getElementById('radar-status').innerText = `[ ЗАСЕЧЕНИ: ${data.states.length} САМОЛЕТА НАД ТЕБ ]`;
+                    document.getElementById('hud').innerText = `[ МОНИТОР: СЛЕДЕНЕ НА ${data.states.length} АКТИВНИ ПОЛЕТА ]`;
 
-                    data.states.slice(0, 10).forEach(plane => {
-                        const callsign = plane[1] || "UNKNOWN";
-                        const pLat = plane[6];
-                        const pLon = plane[5];
+                    data.states.forEach(flight => {
+                        const icao = flight[0];
+                        const callsign = flight[1] ? flight[1].trim() : "UNKNOWN";
+                        const country = flight[2];
+                        const lon = flight[5];
+                        const lat = flight[6];
+                        const altitude = flight[7] ? Math.round(flight[7]) : 0;
+                        const onGround = flight[8]; // true ако е кацнал, false ако лети
+                        const velocity = flight[9] ? Math.round(flight[9] * 3.6) : 0; // в км/ч
+                        const heading = flight[10] || 0; // Посока на движение
 
-                        if (!pLat || !pLon) return;
+                        if (!lat || !lon) return;
 
-                        // Изчисляване на позицията върху кръглия радар
-                        const xDiff = (pLon - userLon) * 120 + 200;
-                        const yDiff = 200 - (pLat - userLat) * 120;
+                        // Изчисляване на примерно оставащо време (Ако приемем дестинация наблизо)
+                        let timeRemaining = onGround ? "Кацнал" : `${Math.round(40000 / (velocity || 400))} мин. до дестинация`;
 
-                        // Ограничаване вътре в радара
-                        if(xDiff > 0 && xDiff < 400 && yDiff > 0 && yDiff < 400) {
-                            const dot = document.createElement('div');
-                            dot.className = 'plane-dot';
-                            dot.style.left = `${xDiff}px`;
-                            dot.style.top = `${yDiff}px`;
+                        const statusText = onGround 
+                            ? `<span class="status-landed">КАЦНАЛ / НА ЗЕМЯТА</span>` 
+                            : `<span class="status-flying">ВЪВ ВЪЗДУХА</span>`;
 
-                            const label = document.createElement('div');
-                            label.className = 'plane-label';
-                            label.innerText = callsign.trim();
-                            dot.appendChild(label);
+                        const popupHtml = `
+                            <div class="popup-title">ПОЛЕТ: ${callsign}</div>
+                            <b>Държава:</b> ${country}<br>
+                            <b>Статус:</b> ${statusText}<br>
+                            <b>Скорост:</b> ${velocity} км/ч<br>
+                            <b>Височина:</b> ${altitude} м<br>
+                            <b>Време:</b> ${timeRemaining}
+                        `;
 
-                            document.getElementById('radar').appendChild(dot);
+                        // Завъртане на самолета по посока на движението му
+                        const customIcon = L.divIcon({
+                            html: `<div style="color: ${onGround ? '#ffaa00' : '#00ff66'}; font-size: 22px; transform: rotate(${heading - 45}deg); transition: all 0.5s;">✈</div>`,
+                            className: 'custom-plane-icon',
+                            iconSize: [22, 22]
+                        });
+
+                        if (flightMarkers[icao]) {
+                            // Ако самолетът вече съществува, просто го премести
+                            flightMarkers[icao].setLatLng([lat, lon]);
+                            flightMarkers[icao].setIcon(customIcon);
+                            flightMarkers[icao].setPopupContent(popupHtml);
+                        } else {
+                            // Ако е нов самолет, го създай на картата
+                            flightMarkers[icao] = L.marker([lat, lon], {icon: customIcon})
+                                .addTo(map)
+                                .bindPopup(popupHtml);
                         }
                     });
-                });
+                })
+                .catch(err => console.error("Грешка при обновяване:", err));
         }
 
-        // Обновяване на всеки 15 секунди
-        setInterval(getPlanes, 15000);
+        // Обновяване на данните за трафика автоматично на всеки 10 секунди
+        setInterval(updateFlights, 10000);
     </script>
 </body>
 </html>
