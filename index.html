@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CS2 Live Flight Radar & Map</title>
+    <title>CS2 Real-Time Flight Sat-Map</title>
+    <link rel="stylesheet" href="https://unpkg.com" />
     <style>
         html, body {
             margin: 0;
@@ -15,6 +16,11 @@
             color: #00ff66;
             overflow: hidden;
         }
+        #map {
+            width: 100vw;
+            height: 55vh;
+            border-bottom: 2px solid #ff3344;
+        }
         .hud-overlay {
             background: rgba(5, 5, 10, 0.9);
             border-bottom: 2px solid #ff3344;
@@ -23,20 +29,6 @@
             font-size: 14px;
             font-weight: bold;
             text-align: center;
-            box-shadow: 0 0 15px rgba(255, 51, 68, 0.3);
-        }
-        .radar-box {
-            width: 100vw;
-            height: 55vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: radial-gradient(circle, #101018 0%, #050508 100%);
-            border-bottom: 2px solid #ff3344;
-            position: relative;
-        }
-        canvas {
-            background: transparent;
         }
         .info-panel {
             height: 40vh;
@@ -63,17 +55,14 @@
 </head>
 <body>
 
-    <div class="hud-overlay">
-        [ СИСТЕМА: ДИГИТАЛЕН СКЕНЕР И ТАБЛО ЗА ПОЛЕТИ АКТИВНИ ]
+    <div class="hud-overlay" id="hud">
+        [ СИСТЕМА: САТЕЛИТЕН МОНИТОР НА ЖИВО АКТИВЕН (ОБНОВЯВАНЕ: 30с) ]
     </div>
 
-    <!-- Вместо iframe ползваме чист HTML Canvas - Никога не се блокира! -->
-    <div class="radar-box">
-        <canvas id="radar" width="350" height="350"></canvas>
-    </div>
+    <div id="map"></div>
 
     <div class="info-panel">
-        <h3>МОНИТОРИНГ НА ТРАФИКА (РЕАЛНО ВРЕМЕ)</h3>
+        <h3>МОНИТОРИНГ НА ТРАФИКА НА ЖИВО (БЪЛГАРИЯ)</h3>
         <table>
             <thead>
                 <tr>
@@ -84,94 +73,90 @@
                     <th>ОСТАВАЩО ВРЕМЕ</th>
                 </tr>
             </thead>
-            <tbody>
-                <tr>
-                    <td>LZ-BGH (Bulgaria Air)</td>
-                    <td class="status-flying">ЛЕТИ</td>
-                    <td>780 км/ч</td>
-                    <td>9,200 м</td>
-                    <td>12 мин. до кацане</td>
-                </tr>
-                <tr>
-                    <td>W64363 (Wizz Air)</td>
-                    <td class="status-flying">ЛЕТИ</td>
-                    <td>820 км/ч</td>
-                    <td>10,400 м</td>
-                    <td>28 мин. до кацане</td>
-                </tr>
-                <tr>
-                    <td>FR6322 (Ryanair)</td>
-                    <td class="status-landed">КАЦНАЛ</td>
-                    <td>0 км/ч</td>
-                    <td>0 м</td>
-                    <td>Пристигнал (Терминал 2)</td>
-                </tr>
-                <tr>
-                    <td>LH1702 (Lufthansa)</td>
-                    <td class="status-flying">ЛЕТИ</td>
-                    <td>690 км/ч</td>
-                    <td>5,400 м</td>
-                    <td>7 мин. до кацане</td>
-                </tr>
+            <tbody id="table-body">
+                <!-- Тук JavaScript автоматично ще добавя истинските самолети -->
             </tbody>
         </table>
     </div>
 
+    <script src="https://unpkg.com"></script>
     <script>
-        const canvas = document.getElementById('radar');
-        const ctx = canvas.getContext('2d');
-        let angle = 0;
+        // Инициализиране на сателитната карта над България
+        const map = L.map('map').setView([42.6977, 23.3219], 8);
 
-        function drawRadar() {
-            ctx.clearRect(0, 0, 350, 350);
-            
-            // Център на радара
-            let cx = 175, cy = 175, r = 160;
+        L.tileLayer('https://arcgisonline.com{z}/{y}/{x}', {
+            attribution: 'Esri Satellite Imagery'
+        }).addTo(map);
 
-            // Кръгове
-            ctx.strokeStyle = '#ff3344';
-            ctx.lineWidth = 1;
-            for(let i = 40; i <= r; i += 40) {
-                ctx.beginPath();
-                ctx.arc(cx, cy, i, 0, Math.PI * 2);
-                ctx.stroke();
-            }
+        let markers = {};
 
-            // Кръст
-            ctx.beginPath();
-            ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
-            ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
-            ctx.stroke();
+        function fetchRealData() {
+            // Използваме стабилен публичен сървър с реални данни за полети без ограничения
+            fetch('https://allorigins.win' + encodeURIComponent('https://opensky-network.org'))
+                .then(response => response.json())
+                .then(raw => {
+                    const data = JSON.parse(raw.contents);
+                    const tbody = document.getElementById('table-body');
+                    
+                    if(!data || !data.states) {
+                        document.getElementById('hud').innerText = "[ СИСТЕМА: В МОМЕНТА НЯМА ПОЛЕТИ НАД БЪЛГАРИЯ ]";
+                        return;
+                    }
 
-            // Въртяща се линия
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
-            ctx.strokeStyle = 'rgba(255, 51, 68, 0.8)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
+                    // Изчистване на старото табло преди новото записване
+                    tbody.innerHTML = '';
+                    document.getElementById('hud').innerText = `[ СИСТЕМА: ПОСЛЕДНО ОБНОВЯВАНЕ: ${new Date().toLocaleTimeString()} | ЗАСЕЧЕНИ: ${data.states.length} ]`;
 
-            // Точки за самолетите на екрана
-            const targets = [
-                {x: 120, y: 100, label: "LZ-BGH"},
-                {x: 240, y: 150, label: "W64363"},
-                {x: 160, y: 260, label: "LH1702"}
-            ];
+                    data.states.forEach(f => {
+                        const id = f[0];
+                        const callsign = f[1] ? f[1].trim() : "N/A";
+                        const lon = f[5];
+                        const lat = f[6];
+                        const onGround = f[8];
+                        const speed = f[9] ? Math.round(f[9] * 3.6) : 0; // в км/ч
+                        const alt = f[7] ? Math.round(f[7]) : 0; // в метри
+                        const heading = f[10] || 0;
 
-            targets.forEach(t => {
-                ctx.fillStyle = '#00ff66';
-                ctx.beginPath();
-                ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.font = '10px monospace';
-                ctx.fillText(t.label, t.x + 8, t.y + 4);
-            });
+                        if (!lat || !lon) return;
 
-            angle += 0.02;
-            requestAnimationFrame(drawRadar);
+                        // Изчисляване на реално оставащо време (базирано на разстоянието до София)
+                        let distanceToSofia = Math.sqrt(Math.pow(lat - 42.69, 2) + Math.pow(lon - 23.40, 2)) * 111; // в км
+                        let minutesLeft = speed > 100 ? Math.round((distanceToSofia / speed) * 60) : 0;
+                        let timeInfo = onGround ? "Пристигнал" : (minutesLeft > 0 ? `${minutesLeft} мин. до София` : "Близо до кацане");
+
+                        // 1. Добавяне в таблицата под картата
+                        const row = `
+                            <tr>
+                                <td>${callsign}</td>
+                                <td class="${onGround ? 'status-landed' : 'status-flying'}">${onGround ? 'НА ЗЕМЯТА' : 'ЛЕТИ'}</td>
+                                <td>${speed} км/ч</td>
+                                <td>${alt} м</td>
+                                <td>${timeInfo}</td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += row;
+
+                        // 2. Добавяне / Преместване на иконката на истинския самолет върху сателита
+                        const icon = L.divIcon({
+                            html: `<div style="color: ${onGround ? '#ffaa00' : '#00ff66'}; font-size: 26px; font-weight: bold; text-shadow: 2px 2px 3px #000; transform: rotate(${heading - 45}deg); transition: all 0.5s;">✈</div>`
+                        });
+
+                        const popupContent = `<b>Полет:</b> ${callsign}<br><b>Скорост:</b> ${speed} км/ч<br><b>Височина:</b> ${alt} м`;
+
+                        if (markers[id]) {
+                            markers[id].setLatLng([lat, lon]);
+                            markers[id].setIcon(icon);
+                            markers[id].setPopupContent(popupContent);
+                        } else {
+                            markers[id] = L.marker([lat, lon], {icon: icon}).addTo(map).bindPopup(popupContent);
+                        }
+                    });
+                }).catch(e => console.error("Грешка при връзка с радара:", e));
         }
-        drawRadar();
-    </script>
 
+        // Стартиране веднага и настройка на таймер за точно на всеки 30 секунди (30000 милисекунди)
+        fetchRealData();
+        setInterval(fetchRealData, 30000);
+    </script>
 </body>
 </html>
