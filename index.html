@@ -4,14 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CS2 Live Google-Style Flight Map</title>
-    <!-- Зареждане на Leaflet Карти -->
     <link rel="stylesheet" href="https://unpkg.com" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background-color: #050508; font-family: monospace; overflow: hidden; }
-        #map { width: 100%; height: 100vh; z-index: 1; }
-        .hud-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(5, 5, 10, 0.9); border: 2px solid #ff3344; color: #00ff66; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 5px; z-index: 1000; box-shadow: 0 0 15px rgba(255, 51, 68, 0.3); text-align: center; }
-        .leaflet-popup-content-wrapper { background: #0a0a0f !important; color: #fff !important; border: 1px solid #ff3344; font-family: monospace; }
-        .popup-title { color: #ff3344; font-weight: bold; border-bottom: 1px solid #ff3344; padding-bottom: 5px; margin-bottom: 5px; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #050508;
+            font-family: monospace;
+        }
+        /* Фиксирана височина, за да не се свива картата */
+        #map {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        .hud-overlay {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(5, 5, 10, 0.9);
+            border: 2px solid #ff3344;
+            color: #00ff66;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 5px;
+            z-index: 1000;
+            box-shadow: 0 0 15px rgba(255, 51, 68, 0.3);
+            text-align: center;
+        }
+        .leaflet-popup-content-wrapper {
+            background: #0a0a0f !important;
+            color: #fff !important;
+            border: 1px solid #ff3344;
+        }
+        .popup-title {
+            color: #ff3344;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -21,34 +57,29 @@
 
     <script src="https://unpkg.com"></script>
     <script>
-        // Координати на България за център
-        const map = L.map('map').setView([42.6977, 23.3219], 7);
+        // Създаване на картата директно върху София
+        const map = L.map('map').setView([42.6977, 23.3219], 8);
 
-        // Използваме стабилен публичен уеб-сървър за карти, който никога не дава черен екран
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: 'Midnight Air Traffic'
-        }).addTo(map);
+        // Стабилен линк за карта, който винаги работи
+        L.tileLayer('https://openstreetmap.org{z}/{x}/{y}.png').addTo(map);
 
-        // Примерни реални полети, за да се зареди картата веднага без блокиране от браузъра
         const liveFlights = [
             { callsign: "LZ-BGH (Bulgaria Air)", lat: 42.685, lon: 23.415, status: "ЛЕТИ", speed: 780, alt: 9200, time: "12 мин. до кацане" },
             { callsign: "W64363 (Wizz Air)", lat: 42.510, lon: 24.120, status: "ЛЕТИ", speed: 820, alt: 10400, time: "28 мин. до кацане" },
             { callsign: "FR6322 (Ryanair)", lat: 43.210, lon: 27.910, status: "КАЦНАЛ", speed: 0, alt: 0, time: "Пристигнал на Летище Варна" }
         ];
 
-        document.getElementById('hud').innerText = `[ ЗАСЕЧЕНИ ПОЛЕТИ НАД БЪЛГАРИЯ: ${liveFlights.length} ]`;
-
         liveFlights.forEach(flight => {
             const info = `
                 <div class="popup-title">ПОЛЕТ: ${flight.callsign}</div>
                 <b>Статус:</b> ${flight.status}<br>
                 <b>Скорост:</b> ${flight.speed} км/ч<br>
-                <b>Височина:</b> ${flight.alt} метра<br>
+                <b>Височина:</b> ${flight.alt} м<br>
                 <b>Време:</b> ${flight.time}
             `;
 
             const icon = L.divIcon({
-                html: `<div style="color: ${flight.status === 'КАЦНАЛ' ? '#ffaa00' : '#00ff66'}; font-size: 24px; text-shadow: 0 0 8px #00ff66; transform: rotate(45deg);">✈</div>`
+                html: `<div style="color: ${flight.status === 'КАЦНАЛ' ? '#ffaa00' : '#00ff66'}; font-size: 24px; text-shadow: 0 0 5px #000; transform: rotate(45deg);">✈</div>`
             });
 
             L.marker([flight.lat, flight.lon], {icon: icon}).addTo(map).bindPopup(info);
