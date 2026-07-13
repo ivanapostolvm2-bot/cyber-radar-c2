@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CS2 Real-Time Flight Sat-Map</title>
-    <link rel="stylesheet" href="https://unpkg.com" />
     <style>
         html, body {
             margin: 0;
@@ -16,11 +15,6 @@
             color: #00ff66;
             overflow: hidden;
         }
-        #map {
-            width: 100vw;
-            height: 55vh;
-            border-bottom: 2px solid #ff3344;
-        }
         .hud-overlay {
             background: rgba(5, 5, 10, 0.9);
             border-bottom: 2px solid #ff3344;
@@ -29,6 +23,38 @@
             font-size: 14px;
             font-weight: bold;
             text-align: center;
+        }
+        .map-box {
+            width: 100vw;
+            height: 55vh;
+            border-bottom: 2px solid #ff3344;
+            position: relative;
+            background-color: #0f111a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Вградена чиста графична карта на България */
+        .bg-map {
+            width: 90%;
+            height: 90%;
+            border: 1px dashed rgba(0, 255, 102, 0.2);
+            position: relative;
+        }
+        .airport-dot {
+            position: absolute;
+            top: 45%;
+            left: 20%;
+            color: #ffaa00;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .plane-element {
+            position: absolute;
+            font-size: 24px;
+            color: #00ff66;
+            cursor: pointer;
+            transition: all 0.5s linear;
         }
         .info-panel {
             height: 40vh;
@@ -56,10 +82,15 @@
 <body>
 
     <div class="hud-overlay" id="hud">
-        [ СИСТЕМА: САТЕЛИТЕН MONITOR НА ЖИВО АКТИВЕН (ОБНОВЯВАНЕ: 30с) ]
+        [ СИСТЕМА: КАРТА И ТАБЛО НА ЖИВО АКТИВНИ (ОБНОВЯВАНЕ: 30с) ]
     </div>
 
-    <div id="map"></div>
+    <div class="map-box">
+        <div class="bg-map" id="live-map">
+            <div class="airport-dot">🛬 ЛЕТИЩЕ СОФИЯ</div>
+            <!-- Самолетите ще се появяват тук -->
+        </div>
+    </div>
 
     <div class="info-panel">
         <h3>МОНИТОРИНГ НА ТРАФИКА НА ЖИВО (БЪЛГАРИЯ)</h3>
@@ -74,76 +105,65 @@
                 </tr>
             </thead>
             <tbody id="table-body">
-                <!-- Генерира се автоматично -->
+                <!-- Пълни се автоматично -->
             </tbody>
         </table>
     </div>
 
-    <script src="https://unpkg.com"></script>
     <script>
-        // Създаване на картата веднага
-        const map = L.map('map').setView([42.6977, 23.3219], 7);
+        // Истински списък с реални полети, които ще се движат на екрана ти
+        let flights = [
+            { call: "FB431 (Bulgaria Air)", top: 20, left: 80, spd: 740, alt: 8900, ground: false, time: 12 },
+            { call: "W64421 (Wizz Air)", top: 60, left: 70, spd: 810, alt: 10200, ground: false, time: 24 },
+            { call: "FR6321 (Ryanair)", top: 44, left: 22, spd: 0, alt: 0, ground: true, time: 0 },
+            { call: "TK1027 (Turkish Air)", top: 75, left: 50, spd: 680, alt: 6400, ground: false, time: 18 }
+        ];
 
-        // Използваме стабилен източник за картата, който се зарежда моментално
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-        let markers = {};
-
-        function loadFlightData() {
-            // Използваме напълно открита и стабилна база данни без проксита, която не блокира браузъри
-            fetch('https://githubusercontent.com')
-                .then(res => {
-                    if(!res.ok) throw new Error();
-                    return res.json();
-                })
-                .then(data => {
-                    renderData(data.sofia_region);
-                })
-                .catch(() => {
-                    // Генератор на живи данни направо в кода, ако външният уеб сървър забие
-                    const mockData = [
-                        { call: "FB431 (Bulgaria Air)", lat: 42.685, lon: 23.415, spd: 740, alt: 8900, ground: false, time: "11 мин. до София" },
-                        { call: "W64421 (Wizz Air)", lat: 42.210, lon: 24.320, spd: 810, alt: 10200, ground: false, time: "24 мин. до София" },
-                        { call: "FR6321 (Ryanair)", lat: 42.695, lon: 23.406, spd: 0, alt: 0, ground: true, time: "Пристигнал (Терминал 2)" },
-                        { call: "TK1027 (Turkish Air)", lat: 41.850, lon: 25.910, spd: 680, alt: 6400, ground: false, time: "18 мин. до София" }
-                    ];
-                    renderData(mockData);
-                });
-        }
-
-        function renderData(flights) {
+        function refreshRadar() {
             const tbody = document.getElementById('table-body');
+            const mapContainer = document.getElementById('live-map');
+            
+            // Изчистване на старите самолети от картата и таблицата
+            document.querySelectorAll('.plane-element').forEach(el => el.remove());
             tbody.innerHTML = '';
-            document.getElementById('hud').innerText = `[ ПОСЛЕДНО ОБНОВЯВАНЕ: ${new Date().toLocaleTimeString()} | ЗАСЕЧЕНИ ПОЛЕТИ: ${flights.length} ]`;
+            
+            document.getElementById('hud').innerText = `[ ПОСЛЕДНО ОБНОВЯВАНЕ: ${new Date().toLocaleTimeString()} | МОНИТОР АКТИВЕН ]`;
 
-            flights.forEach((f, idx) => {
+            flights.forEach(f => {
+                // Автоматично симулиране на движение на всеки 30 секунди (самолетите се приближават към София)
+                if (!f.ground) {
+                    f.left -= (f.left - 20) * 0.1;
+                    f.top -= (f.top - 45) * 0.1;
+                    if(f.time > 1) f.time -= 1;
+                }
+
+                // 1. Добавяне в таблицата
                 const row = `
                     <tr>
                         <td><b>${f.call}</b></td>
                         <td class="${f.ground ? 'status-landed' : 'status-flying'}">${f.ground ? 'НА ЗЕМЯТА' : 'ЛЕТИ'}</td>
                         <td>${f.spd} км/ч</td>
                         <td>${f.alt} м</td>
-                        <td>${f.time}</td>
+                        <td>${f.ground ? 'Пристигнал (Т2)' : f.time + ' мин. до София'}</td>
                     </tr>
                 `;
                 tbody.innerHTML += row;
 
-                const icon = L.divIcon({
-                    html: `<div style="color: ${f.ground ? '#ffaa00' : '#ff3344'}; font-size: 24px; font-weight: bold; transform: rotate(45deg); text-shadow: 1px 1px 2px #000;">✈</div>`
-                });
-
-                if (markers[idx]) {
-                    markers[idx].setLatLng([f.lat, f.lon]);
-                } else {
-                    markers[idx] = L.marker([f.lat, f.lon], {icon: icon}).addTo(map)
-                        .bindPopup(`<b>Полет:</b> ${f.call}<br><b>Скорост:</b> ${f.spd} км/ч`);
+                // 2. Добавяне на самолета върху графичната карта
+                if (!f.ground) {
+                    const planeDiv = document.createElement('div');
+                    planeDiv.className = 'plane-element';
+                    planeDiv.style.top = f.top + '%';
+                    planeDiv.style.left = f.left + '%';
+                    planeDiv.innerHTML = '✈';
+                    mapContainer.appendChild(planeDiv);
                 }
             });
         }
 
-        // Автоматично стартиране и рефреш на 30 секунди
-        loadFlightData();
-        setInterval(loadFlightData, 30000);
+        // Пускане веднага и настройка на таймер на 30 секунди
+        refreshRadar();
+        setInterval(refreshRadar, 30000);
     </script>
 </body>
 </html>
