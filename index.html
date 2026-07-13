@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Midnight Web Radar C2</title>
+    <title>Midnight Flight Tracker Radar</title>
     <style>
         body {
             background-color: #0a0a0c;
@@ -25,12 +25,11 @@
             color: #00ff66;
             text-shadow: 0 0 8px #00ff66;
             margin-bottom: 20px;
-            animation: blink 1.5s infinite;
         }
         .radar-container {
             position: relative;
-            width: 300px;
-            height: 300px;
+            width: 400px;
+            height: 400px;
             border: 2px solid #ff3344;
             border-radius: 50%;
             box-shadow: 0 0 20px rgba(255, 51, 68, 0.2);
@@ -42,36 +41,110 @@
             height: 100%;
             background: conic-gradient(from 0deg, rgba(255, 51, 68, 0.4) 0deg, transparent 90deg);
             border-radius: 50%;
-            animation: rotate 3s linear infinite;
+            animation: rotate 4s linear infinite;
+            z-index: 1;
         }
-        .dot {
+        .plane-dot {
             position: absolute;
-            width: 8px;
-            height: 8px;
+            width: 10px;
+            height: 10px;
             background-color: #00ff66;
             border-radius: 50%;
-            top: 40%;
-            left: 65%;
-            box-shadow: 0 0 10px #00ff66;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 12px #00ff66;
+            z-index: 2;
+            cursor: pointer;
+        }
+        .plane-label {
+            position: absolute;
+            color: #00ff66;
+            font-size: 10px;
+            white-space: nowrap;
+            margin-top: 12px;
+            margin-left: 5px;
+            background: rgba(0,0,0,0.7);
+            padding: 2px;
+            border-radius: 3px;
         }
         @keyframes rotate {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
         }
-        @keyframes blink {
-            50% { opacity: 0.5; }
-        }
     </style>
 </head>
 <body>
-    <h1>MIDNIGHT REMOTE CONTROL</h1>
-    <div class="status">[ SYSTEM STATUS: ACTIVE & CONNECTED ]</div>
+    <h1>AIRSPACE REAL-TIME RADAR</h1>
+    <div id="radar-status" class="status">[ ТЪРСЕНЕ НА САМОЛЕТИ В РЕГИОНА... ]</div>
     
-    <div class="radar-container">
+    <div class="radar-container" id="radar">
         <div class="radar-sweep"></div>
-        <div class="dot"></div>
     </div>
 
-    <p style="margin-top: 20px; color: #888; font-size: 12px;">Линк за вграждане в Midnight: <span style="color: #fff;">://onrender.com</span></p>
+    <script>
+        // Координати по подразбиране (България)
+        let userLat = 42.6977;
+        let userLon = 23.3219;
+
+        // Автоматично намиране на твоята локация през IP
+        fetch('https://ipapi.co')
+            .then(res => res.json())
+            .then(data => {
+                userLat = data.latitude;
+                userLon = data.longitude;
+                document.getElementById('radar-status').innerText = `[ ЗАСИЧАНЕ НАД: ${data.city.toUpperCase()} ]`;
+                getPlanes();
+            })
+            .catch(() => getPlanes());
+
+        function getPlanes() {
+            // Сканира за самолети в радиус около теб през OpenSky API
+            const box = 1.5; // Радиус на обсега
+            const url = `https://opensky-network.org{userLat-box}&lamin=${userLat-box}&lamax=${userLat+box}&lomin=${userLon-box}&lomax=${userLon+box}`;
+            
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    // Премахване на старите самолети от екрана преди рефреш
+                    document.querySelectorAll('.plane-dot').forEach(el => el.remove());
+                    
+                    if(!data.states) {
+                        document.getElementById('radar-status').innerText = `[ НЯМА ОТКРИТИ САМОЛЕТИ В МОМЕНТА ]`;
+                        return;
+                    }
+
+                    document.getElementById('radar-status').innerText = `[ ЗАСЕЧЕНИ: ${data.states.length} САМОЛЕТА НАД ТЕБ ]`;
+
+                    data.states.slice(0, 10).forEach(plane => {
+                        const callsign = plane[1] || "UNKNOWN";
+                        const pLat = plane[6];
+                        const pLon = plane[5];
+
+                        if (!pLat || !pLon) return;
+
+                        // Изчисляване на позицията върху кръглия радар
+                        const xDiff = (pLon - userLon) * 120 + 200;
+                        const yDiff = 200 - (pLat - userLat) * 120;
+
+                        // Ограничаване вътре в радара
+                        if(xDiff > 0 && xDiff < 400 && yDiff > 0 && yDiff < 400) {
+                            const dot = document.createElement('div');
+                            dot.className = 'plane-dot';
+                            dot.style.left = `${xDiff}px`;
+                            dot.style.top = `${yDiff}px`;
+
+                            const label = document.createElement('div');
+                            label.className = 'plane-label';
+                            label.innerText = callsign.trim();
+                            dot.appendChild(label);
+
+                            document.getElementById('radar').appendChild(dot);
+                        }
+                    });
+                });
+        }
+
+        // Обновяване на всеки 15 секунди
+        setInterval(getPlanes, 15000);
+    </script>
 </body>
 </html>
