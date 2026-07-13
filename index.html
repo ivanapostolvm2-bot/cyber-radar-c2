@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CS2 Live Google-Style Flight Map</title>
+    <title>CS2 Live Flight Radar & Map</title>
     <style>
         html, body {
             margin: 0;
@@ -15,13 +15,6 @@
             color: #00ff66;
             overflow: hidden;
         }
-        /* Вградената Google карта заема целия екран */
-        iframe {
-            width: 100vw;
-            height: 60vh;
-            border: none;
-            border-bottom: 2px solid #ff3344;
-        }
         .hud-overlay {
             background: rgba(5, 5, 10, 0.9);
             border-bottom: 2px solid #ff3344;
@@ -32,8 +25,21 @@
             text-align: center;
             box-shadow: 0 0 15px rgba(255, 51, 68, 0.3);
         }
+        .radar-box {
+            width: 100vw;
+            height: 55vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle, #101018 0%, #050508 100%);
+            border-bottom: 2px solid #ff3344;
+            position: relative;
+        }
+        canvas {
+            background: transparent;
+        }
         .info-panel {
-            height: 35vh;
+            height: 40vh;
             padding: 15px;
             overflow-y: auto;
             background: #0a0a0f;
@@ -58,11 +64,13 @@
 <body>
 
     <div class="hud-overlay">
-        [ СИСТЕМА: САТЕЛИТЕН МОНИТОР И ТАБЛО ЗА ПОЛЕТИ АКТИВНИ ]
+        [ СИСТЕМА: ДИГИТАЛЕН СКЕНЕР И ТАБЛО ЗА ПОЛЕТИ АКТИВНИ ]
     </div>
 
-    <!-- Реална Google сателитна карта над Летище София - Винаги работи! -->
-    <iframe src="https://google.com"></iframe>
+    <!-- Вместо iframe ползваме чист HTML Canvas - Никога не се блокира! -->
+    <div class="radar-box">
+        <canvas id="radar" width="350" height="350"></canvas>
+    </div>
 
     <div class="info-panel">
         <h3>МОНИТОРИНГ НА ТРАФИКА (РЕАЛНО ВРЕМЕ)</h3>
@@ -108,6 +116,62 @@
             </tbody>
         </table>
     </div>
+
+    <script>
+        const canvas = document.getElementById('radar');
+        const ctx = canvas.getContext('2d');
+        let angle = 0;
+
+        function drawRadar() {
+            ctx.clearRect(0, 0, 350, 350);
+            
+            // Център на радара
+            let cx = 175, cy = 175, r = 160;
+
+            // Кръгове
+            ctx.strokeStyle = '#ff3344';
+            ctx.lineWidth = 1;
+            for(let i = 40; i <= r; i += 40) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, i, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Кръст
+            ctx.beginPath();
+            ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+            ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
+            ctx.stroke();
+
+            // Въртяща се линия
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+            ctx.strokeStyle = 'rgba(255, 51, 68, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Точки за самолетите на екрана
+            const targets = [
+                {x: 120, y: 100, label: "LZ-BGH"},
+                {x: 240, y: 150, label: "W64363"},
+                {x: 160, y: 260, label: "LH1702"}
+            ];
+
+            targets.forEach(t => {
+                ctx.fillStyle = '#00ff66';
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.font = '10px monospace';
+                ctx.fillText(t.label, t.x + 8, t.y + 4);
+            });
+
+            angle += 0.02;
+            requestAnimationFrame(drawRadar);
+        }
+        drawRadar();
+    </script>
 
 </body>
 </html>
